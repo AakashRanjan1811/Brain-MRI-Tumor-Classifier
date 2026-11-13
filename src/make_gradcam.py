@@ -19,6 +19,7 @@ def main():
     ap.add_argument("--data-dir")
     ap.add_argument("--title", default="EfficientNetB3")
     ap.add_argument("--tta", action="store_true")
+    ap.add_argument("--layer", help="Backbone layer for Grad-CAM (default: last feature map).")
     args = ap.parse_args()
 
     if not args.data_dir:
@@ -32,7 +33,7 @@ def main():
     y_true, y_prob = predict(model, make_dataset(te_p, te_y, size), tta=args.tta)
     picks = pick_examples(y_true, y_prob)
     gradcam_figure(model, [load_image(te_p[i], size) for i in picks], [int(y_true[i]) for i in picks],
-                   args.out, title=args.title)
+                   args.out, title=args.title, layer=args.layer)
     print(f"test accuracy check: {(y_prob.argmax(1) == y_true).mean():.4f} | saved {args.out}")
 
 
