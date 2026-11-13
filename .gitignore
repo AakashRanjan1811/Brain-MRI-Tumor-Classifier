@@ -1,3 +1,9 @@
 .ipynb_checkpoints/
 __pycache__/
 *.pyc
+data/
+results/models/
+*.weights.h5
+*.keras
+*.h5
+trained_models.zip
