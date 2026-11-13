@@ -52,11 +52,19 @@ def gradcam(model, image, layer=None, mask_background=True):
     return cam / (cam.max() + 1e-8), cls, float(probs[0, cls])
 
 
-def foreground_mask(image, threshold=15, grow=9):
-    """Head region: pixels brighter than `threshold` (0-255), dilated by `grow` pixels."""
-    fg = (image.mean(-1) > threshold).astype(np.float32)[None, ..., None]
-    fg = tf.nn.max_pool2d(fg, ksize=2 * grow + 1, strides=1, padding="SAME")
-    return fg[0, ..., 0].numpy()
+def foreground_mask(image, rel_threshold=0.1, grow=9):
+    """Head region: largest bright connected region, holes filled, dilated by `grow` pixels."""
+    from scipy import ndimage
+
+    gray = image.mean(-1)
+    fg = gray > max(15.0, rel_threshold * gray.max())
+    labels, n = ndimage.label(fg)
+    if n > 1:  # keep the head, drop isolated specks (noise, burned-in text, corner markers)
+        sizes = ndimage.sum(fg, labels, range(1, n + 1))
+        fg = labels == (1 + int(np.argmax(sizes)))
+    fg = ndimage.binary_fill_holes(fg)
+    fg = ndimage.binary_dilation(fg, iterations=grow)
+    return fg.astype(np.float32)
 
 
 def pick_examples(y_true, y_prob, n_errors=2):
