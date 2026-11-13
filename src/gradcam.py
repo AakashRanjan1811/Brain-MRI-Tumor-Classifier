@@ -12,12 +12,15 @@ from .config import CLASS_DISPLAY, CLASSES
 from .models import HEAD_LAYERS
 
 
-def gradcam(model, image, layer=None):
+def gradcam(model, image, layer=None, mask_background=True):
     """Return (heatmap in [0, 1] at image resolution, predicted class index, confidence).
 
     `image` is a float32 array (H, W, 3) in [0, 255]. The augmentation block is skipped.
     `layer` names a layer inside the EfficientNet backbone to compute the map on; by default the
     backbone's last feature map is used.
+    `mask_background` restricts the displayed map to the head region (non-black pixels). EfficientNet's
+    last feature map shows the same bright spot in the image corner for every class (a border/padding
+    artifact); masking it out keeps the colour scale on the anatomy. Display only: predictions are unchanged.
     """
     backbone = next(l for l in model.layers if l.name.startswith("efficientnet"))
     dense = model.get_layer(HEAD_LAYERS[-1])
@@ -43,9 +46,17 @@ def gradcam(model, image, layer=None):
     feats = tf.cast(feats, tf.float32)
     weights = tf.reduce_mean(grads, axis=(0, 1, 2))
     cam = tf.nn.relu(tf.reduce_sum(feats[0] * weights, axis=-1))
-    cam = cam / (tf.reduce_max(cam) + 1e-8)
-    cam = tf.image.resize(cam[..., None], image.shape[:2], method="bilinear")[..., 0]
-    return cam.numpy(), cls, float(probs[0, cls])
+    cam = tf.image.resize(cam[..., None], image.shape[:2], method="bilinear")[..., 0].numpy()
+    if mask_background:
+        cam = cam * foreground_mask(image)
+    return cam / (cam.max() + 1e-8), cls, float(probs[0, cls])
+
+
+def foreground_mask(image, threshold=15, grow=9):
+    """Head region: pixels brighter than `threshold` (0-255), dilated by `grow` pixels."""
+    fg = (image.mean(-1) > threshold).astype(np.float32)[None, ..., None]
+    fg = tf.nn.max_pool2d(fg, ksize=2 * grow + 1, strides=1, padding="SAME")
+    return fg[0, ..., 0].numpy()
 
 
 def pick_examples(y_true, y_prob, n_errors=2):
