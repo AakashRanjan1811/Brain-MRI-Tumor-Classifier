@@ -30,11 +30,14 @@ def main():
     ap.add_argument("--batch-size", type=int, default=32)
     ap.add_argument("--baseline-size", type=int, default=150)
     ap.add_argument("--effnet-size", type=int, default=224)
-    ap.add_argument("--baseline-epochs", type=int, default=30)
+    ap.add_argument("--baseline-epochs", type=int, default=40)
     ap.add_argument("--head-epochs", type=int, default=5)
     ap.add_argument("--finetune-epochs", type=int, default=30)
     ap.add_argument("--patience", type=int, default=6)
+    ap.add_argument("--baseline-patience", type=int, default=8)
     ap.add_argument("--skip-baseline", action="store_true")
+    ap.add_argument("--only-baseline", action="store_true",
+                    help="Train only the baseline and merge it into an existing results/metrics.json.")
     ap.add_argument("--no-pretrained", action="store_true", help="Random init (offline smoke tests only).")
     ap.add_argument("--no-dedup", action="store_true")
     ap.add_argument("--print-export", action="store_true", help="Print metrics + Grad-CAM image (base64) to stdout.")
@@ -92,11 +95,22 @@ def main():
         s = args.baseline_size
         model, hist, secs = train_baseline(
             make_dataset(tr_p, tr_y, s, args.batch_size, shuffle=True),
-            make_dataset(va_p, va_y, s, args.batch_size), out, s, args.baseline_epochs, args.patience, class_weight,
+            make_dataset(va_p, va_y, s, args.batch_size), out, s, args.baseline_epochs, args.baseline_patience, class_weight,
         )
         record("baseline_cnn", model, hist, secs, s)
         del model
         keras.backend.clear_session()
+
+    if args.only_baseline:
+        path = os.path.join(out, "metrics.json")
+        with open(path) as f:
+            merged = json.load(f)
+        merged["models"]["baseline_cnn"] = results["models"]["baseline_cnn"]
+        with open(path, "w") as f:
+            json.dump(merged, f, indent=1)
+        plots.make_all(out)
+        print("Merged baseline into", path)
+        return
 
     s = args.effnet_size
     model, hist, secs = train_efficientnet(

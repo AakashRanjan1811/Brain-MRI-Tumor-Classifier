@@ -40,7 +40,7 @@ def _merge(histories):
     return out
 
 
-def train_baseline(train_ds, val_ds, out_dir, img_size=150, epochs=30, patience=6, class_weight=None):
+def train_baseline(train_ds, val_ds, out_dir, img_size=150, epochs=40, patience=8, class_weight=None):
     model = build_baseline_cnn(img_size)
     model.compile(
         optimizer=keras.optimizers.Adam(1e-3),

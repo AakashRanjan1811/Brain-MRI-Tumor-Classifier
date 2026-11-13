@@ -24,30 +24,41 @@ def augmentation_block():
 
 
 def build_baseline_cnn(img_size=150):
-    """The original project architecture, unchanged except for an explicit Input and pixel scaling."""
+    """The original project architecture (same layers, same 4,447,044 parameters).
+
+    Changes vs. the original notebook: an explicit Input, pixel scaling to [0, 1], and He
+    initialisation for the ReLU layers. Without BatchNorm, the default Glorot init shrinks the
+    signal through this deep ReLU stack once inputs are in [0, 1] and training stalls at chance
+    level; the original only trained because it was fed raw 0-255 pixels.
+    """
+    he = "he_normal"
+
+    def conv(filters):
+        return layers.Conv2D(filters, 3, activation="relu", kernel_initializer=he)
+
     inputs = keras.Input((img_size, img_size, 3))
     x = layers.Rescaling(1.0 / 255)(inputs)
-    x = layers.Conv2D(32, 3, activation="relu")(x)
-    x = layers.Conv2D(64, 3, activation="relu")(x)
+    x = conv(32)(x)
+    x = conv(64)(x)
     x = layers.MaxPooling2D(2)(x)
     x = layers.Dropout(0.3)(x)
-    x = layers.Conv2D(64, 3, activation="relu")(x)
-    x = layers.Conv2D(64, 3, activation="relu")(x)
+    x = conv(64)(x)
+    x = conv(64)(x)
     x = layers.Dropout(0.3)(x)
     x = layers.MaxPooling2D(2)(x)
     x = layers.Dropout(0.3)(x)
-    x = layers.Conv2D(128, 3, activation="relu")(x)
-    x = layers.Conv2D(128, 3, activation="relu")(x)
-    x = layers.Conv2D(128, 3, activation="relu")(x)
+    x = conv(128)(x)
+    x = conv(128)(x)
+    x = conv(128)(x)
     x = layers.MaxPooling2D(2)(x)
     x = layers.Dropout(0.3)(x)
-    x = layers.Conv2D(128, 3, activation="relu")(x)
-    x = layers.Conv2D(256, 3, activation="relu")(x)
+    x = conv(128)(x)
+    x = conv(256)(x)
     x = layers.MaxPooling2D(2)(x)
     x = layers.Dropout(0.3)(x)
     x = layers.Flatten()(x)
-    x = layers.Dense(512, activation="relu")(x)
-    x = layers.Dense(512, activation="relu")(x)
+    x = layers.Dense(512, activation="relu", kernel_initializer=he)(x)
+    x = layers.Dense(512, activation="relu", kernel_initializer=he)(x)
     x = layers.Dropout(0.3)(x)
     outputs = layers.Dense(NUM_CLASSES, activation="softmax", dtype="float32")(x)
     return keras.Model(inputs, outputs, name="baseline_cnn")
