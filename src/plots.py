@@ -13,7 +13,11 @@ from matplotlib.ticker import MaxNLocator
 
 from .config import CLASS_DISPLAY, CLASSES
 
-NAMES = {"baseline_cnn": "Baseline CNN (original architecture)", "efficientnet_b0": "EfficientNetB0 (transfer learning)"}
+NAMES = {
+    "baseline_cnn": "Baseline CNN (original architecture)",
+    "efficientnet_b0": "EfficientNetB0 (transfer learning)",
+    "efficientnet_b3": "EfficientNetB3 (transfer learning)",
+}
 
 
 def plot_training_curves(results, out_path):

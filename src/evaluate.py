@@ -1,6 +1,7 @@
 """Test-set evaluation: accuracy, macro / per-class metrics, confusion matrix, ROC-AUC."""
 
 import numpy as np
+import tensorflow as tf
 from sklearn.metrics import (
     accuracy_score, classification_report, confusion_matrix,
     f1_score, precision_score, recall_score, roc_auc_score,
@@ -9,8 +10,12 @@ from sklearn.metrics import (
 from .config import CLASSES, NUM_CLASSES
 
 
-def predict(model, ds):
+def predict(model, ds, tta=False):
+    """Class probabilities; with tta=True, averaged over the image and its horizontal flip."""
     y_prob = model.predict(ds, verbose=0)
+    if tta:
+        flipped = ds.map(lambda x, y: (tf.image.flip_left_right(x), y))
+        y_prob = (y_prob + model.predict(flipped, verbose=0)) / 2
     y_true = np.concatenate([np.argmax(y, axis=1) for _, y in ds])
     return y_true, y_prob
 

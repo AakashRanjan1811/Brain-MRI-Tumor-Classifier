@@ -5,7 +5,10 @@ from keras import layers
 
 from .config import NUM_CLASSES
 
-EFFNET_BASE_NAME = "efficientnetb0"
+BACKBONES = {
+    "b0": (keras.applications.EfficientNetB0, "efficientnetb0"),
+    "b3": (keras.applications.EfficientNetB3, "efficientnetb3"),
+}
 HEAD_LAYERS = ("gap", "head_dropout", "predictions")
 
 
@@ -64,27 +67,28 @@ def build_baseline_cnn(img_size=150):
     return keras.Model(inputs, outputs, name="baseline_cnn")
 
 
-def build_efficientnet(img_size=224, pretrained=True, dropout=0.3):
-    """EfficientNetB0 backbone (ImageNet weights) + augmentation + small classification head.
+def build_efficientnet(img_size=224, pretrained=True, dropout=0.3, variant="b0"):
+    """EfficientNet backbone (ImageNet weights) + augmentation + small classification head.
 
     EfficientNet in Keras contains its own input normalisation and expects pixels in [0, 255].
     Returns (model, backbone) so the training loop can freeze / unfreeze the backbone.
     """
     inputs = keras.Input((img_size, img_size, 3))
     x = augmentation_block()(inputs)
-    backbone = keras.applications.EfficientNetB0(
+    app, expected_name = BACKBONES[variant]
+    backbone = app(
         include_top=False,
         weights="imagenet" if pretrained else None,
         input_shape=(img_size, img_size, 3),
     )
-    assert backbone.name == EFFNET_BASE_NAME, backbone.name
+    assert backbone.name == expected_name, backbone.name
     backbone.trainable = False
     # training=False keeps BatchNorm in inference mode even after unfreezing (standard fine-tuning practice).
     x = backbone(x, training=False)
     x = layers.GlobalAveragePooling2D(name="gap")(x)
     x = layers.Dropout(dropout, name="head_dropout")(x)
     outputs = layers.Dense(NUM_CLASSES, activation="softmax", dtype="float32", name="predictions")(x)
-    return keras.Model(inputs, outputs, name="efficientnetb0_classifier"), backbone
+    return keras.Model(inputs, outputs, name=f"efficientnet{variant}_classifier"), backbone
 
 
 def unfreeze_backbone(backbone):

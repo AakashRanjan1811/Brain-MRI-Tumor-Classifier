@@ -53,11 +53,11 @@ def train_baseline(train_ds, val_ds, out_dir, img_size=150, epochs=40, patience=
 
 
 def train_efficientnet(train_ds, val_ds, out_dir, img_size=224, pretrained=True,
-                       head_epochs=5, finetune_epochs=30, patience=6, class_weight=None):
+                       head_epochs=5, finetune_epochs=30, patience=6, class_weight=None, variant="b0"):
     """Two-phase transfer learning: (1) train the new head on a frozen backbone, (2) fine-tune."""
-    model, backbone = build_efficientnet(img_size, pretrained=pretrained)
+    model, backbone = build_efficientnet(img_size, pretrained=pretrained, variant=variant)
     loss = keras.losses.CategoricalCrossentropy(label_smoothing=0.1)
-    ckpt = os.path.join(out_dir, "efficientnet.weights.h5")
+    ckpt = os.path.join(out_dir, f"efficientnet_{variant}.weights.h5")
 
     model.compile(optimizer=keras.optimizers.Adam(1e-3), loss=loss, metrics=["accuracy"])
     h1, s1 = _fit(model, train_ds, val_ds, head_epochs, ckpt, patience, "head", class_weight)

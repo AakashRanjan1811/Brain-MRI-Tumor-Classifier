@@ -8,7 +8,7 @@ import numpy as np
 import tensorflow as tf
 
 from .config import CLASS_DISPLAY, CLASSES
-from .models import EFFNET_BASE_NAME, HEAD_LAYERS
+from .models import HEAD_LAYERS
 
 
 def gradcam(model, image):
@@ -17,7 +17,7 @@ def gradcam(model, image):
     `image` is a float32 array (H, W, 3) in [0, 255]. The augmentation block is skipped,
     and the last convolutional feature map of the backbone is used as the target layer.
     """
-    backbone = model.get_layer(EFFNET_BASE_NAME)
+    backbone = next(l for l in model.layers if l.name.startswith("efficientnet"))
     head = [model.get_layer(n) for n in HEAD_LAYERS]
     x = tf.convert_to_tensor(image[None], tf.float32)
     with tf.GradientTape() as tape:
@@ -52,7 +52,7 @@ def pick_examples(y_true, y_prob, n_errors=2):
     return picks
 
 
-def gradcam_figure(model, images, y_true, out_path):
+def gradcam_figure(model, images, y_true, out_path, title="EfficientNet"):
     """Two rows: input MRI on top, Grad-CAM overlay below, one column per example."""
     n = len(images)
     fig, axes = plt.subplots(2, n, figsize=(2.6 * n, 5.6), squeeze=False)
@@ -68,7 +68,7 @@ def gradcam_figure(model, images, y_true, out_path):
                              color="black" if p == t else "red")
         for a in axes[:, j]:
             a.axis("off")
-    fig.suptitle("Grad-CAM: regions that drove the EfficientNetB0 prediction", fontsize=11)
+    fig.suptitle(f"Grad-CAM: regions that drove the {title} prediction", fontsize=11)
     fig.tight_layout()
     fig.savefig(out_path, dpi=90, pil_kwargs={"quality": 80} if out_path.endswith(".jpg") else None)
     plt.close(fig)

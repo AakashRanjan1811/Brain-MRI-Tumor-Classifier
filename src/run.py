@@ -29,7 +29,9 @@ def main():
     ap.add_argument("--out", default="results")
     ap.add_argument("--batch-size", type=int, default=32)
     ap.add_argument("--baseline-size", type=int, default=150)
-    ap.add_argument("--effnet-size", type=int, default=224)
+    ap.add_argument("--effnet-size", type=int, default=None, help="Default: 224 for b0, 300 for b3.")
+    ap.add_argument("--backbone", choices=["b0", "b3"], default="b0")
+    ap.add_argument("--tta", action="store_true", help="Average predictions over horizontal flip.")
     ap.add_argument("--baseline-epochs", type=int, default=40)
     ap.add_argument("--head-epochs", type=int, default=5)
     ap.add_argument("--finetune-epochs", type=int, default=30)
@@ -43,6 +45,8 @@ def main():
     ap.add_argument("--print-export", action="store_true", help="Print metrics + Grad-CAM image (base64) to stdout.")
     args = ap.parse_args()
 
+    if args.effnet_size is None:
+        args.effnet_size = {"b0": 224, "b3": 300}[args.backbone]
     keras.utils.set_random_seed(SEED)
     gpus = tf.config.list_physical_devices("GPU")
     if gpus:
@@ -79,14 +83,22 @@ def main():
         "models": {},
     }
 
-    def record(name, model, hist, secs, size):
+    def record(name, model, hist, secs, size, tta=False):
         test_ds = make_dataset(te_p, te_y, size, args.batch_size)
-        y_true, y_prob = predict(model, test_ds)
+        y_true, y_prob = predict(model, test_ds, tta=tta)
         m = compute_metrics(y_true, y_prob)
         print(format_metrics(name, m))
+        # Also score the untouched official test split (1,600 images, includes duplicates), for
+        # comparison with numbers reported on this dataset without de-duplication.
+        from .data import find_split_dirs, list_images
+        orig_p, orig_y = list_images(find_split_dirs(args.data_dir)[1])
+        _, orig_prob = predict(model, make_dataset(orig_p, orig_y, size, args.batch_size), tta=tta)
+        m_orig = compute_metrics(orig_y, orig_prob)
+        print(f"{name}: accuracy on original (non-deduplicated) test split: {m_orig['accuracy']:.4f}")
         results["models"][name] = {
             "image_size": size, "params": int(model.count_params()), "train_seconds": round(secs, 1),
-            "epochs_run": len(hist["loss"]), "history": hist, "test_metrics": m,
+            "epochs_run": len(hist["loss"]), "tta": tta, "history": hist, "test_metrics": m,
+            "test_metrics_original_split": m_orig,
         }
         model.save(os.path.join(out, "models", f"{name}.keras"))
         return y_true, y_prob
@@ -115,15 +127,16 @@ def main():
     s = args.effnet_size
     model, hist, secs = train_efficientnet(
         make_dataset(tr_p, tr_y, s, args.batch_size, shuffle=True),
-        make_dataset(va_p, va_y, s, args.batch_size), out, s,
+        make_dataset(va_p, va_y, s, args.batch_size), out, s, variant=args.backbone,
         pretrained=not args.no_pretrained, head_epochs=args.head_epochs,
         finetune_epochs=args.finetune_epochs, patience=args.patience, class_weight=class_weight,
     )
-    y_true, y_prob = record("efficientnet_b0", model, hist, secs, s)
+    y_true, y_prob = record(f"efficientnet_{args.backbone}", model, hist, secs, s, tta=args.tta)
 
     picks = pick_examples(y_true, y_prob)
     cam_path = os.path.join(out, "figures", "gradcam.jpg")
-    gradcam_figure(model, [load_image(te_p[i], s) for i in picks], [int(y_true[i]) for i in picks], cam_path)
+    gradcam_figure(model, [load_image(te_p[i], s) for i in picks], [int(y_true[i]) for i in picks], cam_path,
+                   title=f"EfficientNet{args.backbone.upper()}")
 
     results["total_seconds"] = round(time.time() - t0, 1)
     with open(os.path.join(out, "metrics.json"), "w") as f:
