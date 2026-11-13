@@ -18,7 +18,7 @@ def gradcam(model, image):
     and the last convolutional feature map of the backbone is used as the target layer.
     """
     backbone = next(l for l in model.layers if l.name.startswith("efficientnet"))
-    gap, _, dense = [model.get_layer(n) for n in HEAD_LAYERS]
+    dense = model.get_layer(HEAD_LAYERS[-1])
     kernel = tf.cast(dense.kernel, tf.float32)
     bias = tf.cast(dense.bias, tf.float32)
     x = tf.convert_to_tensor(image[None], tf.float32)
@@ -27,7 +27,8 @@ def gradcam(model, image):
         tape.watch(feats)
         # Gradient of the class *logit* (pre-softmax), as in the original Grad-CAM paper;
         # softmax probabilities saturate and give noisy maps. Dropout is inactive at inference.
-        logits = tf.matmul(gap(feats), kernel) + bias
+        pooled = tf.reduce_mean(feats, axis=(1, 2))  # = GlobalAveragePooling2D, in float32
+        logits = tf.matmul(pooled, kernel) + bias
         probs = tf.nn.softmax(logits)
         cls = int(tf.argmax(logits[0]))
         score = logits[0, cls]
