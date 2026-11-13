@@ -18,23 +18,25 @@ def gradcam(model, image):
     and the last convolutional feature map of the backbone is used as the target layer.
     """
     backbone = next(l for l in model.layers if l.name.startswith("efficientnet"))
-    head = [model.get_layer(n) for n in HEAD_LAYERS]
+    gap, _, dense = [model.get_layer(n) for n in HEAD_LAYERS]
+    kernel = tf.cast(dense.kernel, tf.float32)
+    bias = tf.cast(dense.bias, tf.float32)
     x = tf.convert_to_tensor(image[None], tf.float32)
     with tf.GradientTape() as tape:
         feats = tf.cast(backbone(x, training=False), tf.float32)
         tape.watch(feats)
-        y = feats
-        for layer in head:
-            y = layer(y, training=False)
-        y = tf.cast(y, tf.float32)
-        cls = int(tf.argmax(y[0]))
-        score = y[0, cls]
+        # Gradient of the class *logit* (pre-softmax), as in the original Grad-CAM paper;
+        # softmax probabilities saturate and give noisy maps. Dropout is inactive at inference.
+        logits = tf.matmul(gap(feats), kernel) + bias
+        probs = tf.nn.softmax(logits)
+        cls = int(tf.argmax(logits[0]))
+        score = logits[0, cls]
     grads = tape.gradient(score, feats)
     weights = tf.reduce_mean(grads, axis=(0, 1, 2))
     cam = tf.nn.relu(tf.reduce_sum(feats[0] * weights, axis=-1))
     cam = cam / (tf.reduce_max(cam) + 1e-8)
     cam = tf.image.resize(cam[..., None], image.shape[:2], method="bilinear")[..., 0]
-    return cam.numpy(), cls, float(y[0, cls])
+    return cam.numpy(), cls, float(probs[0, cls])
 
 
 def pick_examples(y_true, y_prob, n_errors=2):
