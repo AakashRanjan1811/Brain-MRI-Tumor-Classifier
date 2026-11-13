@@ -59,6 +59,11 @@ def main():
     (tr_p, tr_y), (va_p, va_y), (te_p, te_y), split_stats = prepare_splits(args.data_dir, dedup=not args.no_dedup)
     print("Split stats:", json.dumps(split_stats, indent=1))
 
+    # Balanced class weights: de-duplication leaves "notumor" with far fewer unique training images.
+    counts = np.bincount(tr_y, minlength=len(CLASSES))
+    class_weight = {i: float(len(tr_y) / (len(CLASSES) * c)) for i, c in enumerate(counts)}
+    print("Class weights:", {CLASSES[i]: round(w, 3) for i, w in class_weight.items()})
+
     results = {
         "classes": CLASSES,
         "data": split_stats,
@@ -67,6 +72,7 @@ def main():
             "gpu": tf.config.experimental.get_device_details(gpus[0]).get("device_name") if gpus else None,
             "mixed_precision": bool(gpus),
         },
+        "class_weight": {CLASSES[i]: w for i, w in class_weight.items()},
         "models": {},
     }
 
@@ -86,7 +92,7 @@ def main():
         s = args.baseline_size
         model, hist, secs = train_baseline(
             make_dataset(tr_p, tr_y, s, args.batch_size, shuffle=True),
-            make_dataset(va_p, va_y, s, args.batch_size), out, s, args.baseline_epochs, args.patience,
+            make_dataset(va_p, va_y, s, args.batch_size), out, s, args.baseline_epochs, args.patience, class_weight,
         )
         record("baseline_cnn", model, hist, secs, s)
         del model
@@ -97,7 +103,7 @@ def main():
         make_dataset(tr_p, tr_y, s, args.batch_size, shuffle=True),
         make_dataset(va_p, va_y, s, args.batch_size), out, s,
         pretrained=not args.no_pretrained, head_epochs=args.head_epochs,
-        finetune_epochs=args.finetune_epochs, patience=args.patience,
+        finetune_epochs=args.finetune_epochs, patience=args.patience, class_weight=class_weight,
     )
     y_true, y_prob = record("efficientnet_b0", model, hist, secs, s)
 
